@@ -27,6 +27,8 @@ namespace ComiServ.Background
         public static readonly IReadOnlyList<string> ZIP_EXTS =  [".cbz", ".zip"];
         public static readonly IReadOnlyList<string> RAR_EXTS =  [".cbr", ".rar"];
         public static readonly IReadOnlyList<string> ZIP7_EXTS = [".cb7", ".7z"];
+        public bool ComicFileExists(string filename);
+        public void DeleteComicFile(string filename);
         //returns null on invalid filetype, throws on analysis error
         public ComicAnalysis? AnalyzeComic(string filename);
         public Task<ComicAnalysis?> AnalyzeComicAsync(string filename);
@@ -36,9 +38,9 @@ namespace ComiServ.Background
         //returns null for ALL UNRECOGNIZED OR NON-IMAGES
         public static string? GetImageMime(string filename)
         {
-            if (new FileExtensionContentTypeProvider().TryGetContentType(filename, out string _mime))
+            if (new FileExtensionContentTypeProvider().TryGetContentType(filename, out string? _mime))
             {
-                if (_mime.StartsWith("image"))
+                if (_mime?.StartsWith("image") ?? false)
                     return _mime;
             }
             return null;
@@ -49,6 +51,21 @@ namespace ComiServ.Background
         : IComicAnalyzer
     {
         private readonly ILogger<IComicAnalyzer>? _logger = logger;
+        public bool ComicFileExists(string filename)
+        {
+            return File.Exists(filename);
+        }
+        public void DeleteComicFile(string filename)
+        {
+            try
+            {
+                File.Delete(filename);
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return;
+            }
+        }
         public ComicAnalysis? AnalyzeComic(string filepath)
         {
             _logger?.LogTrace($"Analyzing comic: {filepath}");

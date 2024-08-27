@@ -24,9 +24,12 @@ namespace ComiServ.Entities
         public int PageCount { get; set; }
         public long SizeBytes { get; set; }
         public long FileXxhash64 { get; set; }
+        public byte[]? ThumbnailWebp { get; set; }
         [InverseProperty("Comic")]
         public ICollection<ComicTag> ComicTags { get; set; } = [];
         [InverseProperty("Comic")]
         public ICollection<ComicAuthor> ComicAuthors { get; set; } = [];
+        [InverseProperty("Comic")]
+        public ICollection<ComicRead> ReadBy { get; set; } = [];
     }
 }

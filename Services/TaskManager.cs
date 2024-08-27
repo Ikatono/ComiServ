@@ -6,6 +6,7 @@ namespace ComiServ.Background
     {
         Scan,
         GetCover,
+        MakeThumbnail,
     }
     //task needs to use the token parameter rather than its own token, because it gets merged with the master token
     public class TaskItem(TaskTypes type, string name, Action<CancellationToken?> action, CancellationToken? token = null)
@@ -26,7 +27,7 @@ namespace ComiServ.Background
         : ITaskManager
     {
         private readonly ConcurrentDictionary<Task, TaskItem> ActiveTasks = [];
-        private readonly CancellationTokenSource MasterToken = new();
+        private CancellationTokenSource MasterToken { get; set; } = new();
         private readonly ILogger<ITaskManager>? _logger = logger;
         private readonly ConcurrentDictionary<System.Timers.Timer,TaskItem> Scheduled = [];
         public void StartTask(TaskItem taskItem)
@@ -65,6 +66,8 @@ namespace ComiServ.Background
         public void CancelAll()
         {
             MasterToken.Cancel();
+            MasterToken.Dispose();
+            MasterToken = new CancellationTokenSource();
         }
         public void ManageFinishedTasks()
         {

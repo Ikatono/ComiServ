@@ -11,6 +11,6 @@ namespace ComiServ.Entities
         public int Id { get; set; }
         [Required]
         public string Name { get; set; } = null!;
-        public ICollection<ComicTag> ComicTags = null!;
+        public ICollection<ComicTag> ComicTags { get; set; } = null!;
     }
 }

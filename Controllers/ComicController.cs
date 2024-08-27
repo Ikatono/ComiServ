@@ -8,18 +8,26 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using ComiServ.Entities;
 using ComiServ.Background;
 using System.ComponentModel;
+using ComiServ.Extensions;
+using System.Runtime.InteropServices;
+using ComiServ.Services;
+using System.Security.Cryptography.X509Certificates;
+using SQLitePCL;
 
 namespace ComiServ.Controllers
 {
-    [Route("api/v1/comics")]
+    [Route(ROUTE)]
     [ApiController]
-    public class ComicController(ComicsContext context, ILogger<ComicController> logger, IConfigService config, IComicAnalyzer analyzer)
+    public class ComicController(ComicsContext context, ILogger<ComicController> logger, IConfigService config, IComicAnalyzer analyzer, IPictureConverter converter, IAuthenticationService _auth)
         : ControllerBase
     {
+        public const string ROUTE = "/api/v1/comics";
         private readonly ComicsContext _context = context;
         private readonly ILogger<ComicController> _logger = logger;
         private readonly Configuration _config = config.Config;
         private readonly IComicAnalyzer _analyzer = analyzer;
+        private readonly IPictureConverter _converter = converter;
+        private readonly IAuthenticationService _auth = _auth;
         //TODO search parameters
         [HttpGet]
         [ProducesResponseType<Paginated<ComicData>>(StatusCodes.Status200OK)]
@@ -39,6 +47,9 @@ namespace ComiServ.Controllers
             [FromQuery]
             bool? exists,
             [FromQuery]
+            [DefaultValue(null)]
+            bool? read,
+            [FromQuery]
             [DefaultValue(0)]
             int page,
             [FromQuery]
@@ -46,13 +57,24 @@ namespace ComiServ.Controllers
             int pageSize
             )
         {
-            //throw new NotImplementedException();
             var results = _context.Comics
                 .Include("ComicAuthors.Author")
                 .Include("ComicTags.Tag");
             if (exists is not null)
             {
                 results = results.Where(c => c.Exists == exists);
+            }
+            string username;
+            if (_auth.User is null)
+            {
+                return Unauthorized(RequestError.NotAuthenticated);
+            }
+            if (read is bool readStatus)
+            {
+                if (readStatus)
+                    results = results.Where(c => c.ReadBy.Any(u => EF.Functions.Like(_auth.User.Username, u.User.Username)));
+                else
+                    results = results.Where(c => c.ReadBy.All(u => !EF.Functions.Like(_auth.User.Username, u.User.Username)));
             }
             foreach (var author in authors)
             {
@@ -112,17 +134,18 @@ namespace ComiServ.Controllers
             }
             if (titleSearch is not null)
             {
-                //results = results.Where(c => EF.Functions.Like(c.Title, $"*{titleSearch}*"));
-                results = results.Where(c => c.Title.Contains(titleSearch));
+                titleSearch = titleSearch.Trim();
+                results = results.Where(c => EF.Functions.Like(c.Title, $"%{titleSearch}%"));
             }
             if (descSearch is not null)
             {
-                //results = results.Where(c => EF.Functions.Like(c.Description, $"*{descSearch}*"));
-                results = results.Where(c => c.Description.Contains(descSearch));
+                descSearch = descSearch.Trim();
+                results = results.Where(c => EF.Functions.Like(c.Description, $"%{descSearch}%"));
             }
             int offset = page * pageSize;
-            return Ok(new Paginated<ComicData>(pageSize, page, results.Skip(offset)
-                .Select(c => new ComicData(c))));
+            return Ok(new Paginated<ComicData>(pageSize, page, results
+                                                                .OrderBy(c => c.Id)
+                                                                .Select(c => new ComicData(c))));
         }
         [HttpDelete]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -136,13 +159,13 @@ namespace ComiServ.Controllers
         }
         [HttpGet("{handle}")]
         [ProducesResponseType<ComicData>(StatusCodes.Status200OK)]
-        [ProducesResponseType<RequestError>(StatusCodes.Status404NotFound)]
         [ProducesResponseType<RequestError>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<RequestError>(StatusCodes.Status404NotFound)]
         public IActionResult GetSingleComicInfo(string handle)
         {
-            _logger.LogInformation("GetSingleComicInfo: {handle}", handle);
-            handle = handle.Trim().ToUpper();
-            if (handle.Length != ComicsContext.HANDLE_LENGTH)
+            //_logger.LogInformation("GetSingleComicInfo: {handle}", handle);
+            var validated = ComicsContext.CleanValidateHandle(handle);
+            if (validated is null)
                 return BadRequest(RequestError.InvalidHandle);
             var comic = _context.Comics
                 .Include("ComicAuthors.Author")
@@ -156,13 +179,13 @@ namespace ComiServ.Controllers
         [HttpPatch("{handle}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType<RequestError>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<RequestError>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType<RequestError>(StatusCodes.Status404NotFound)]
-        public IActionResult UpdateComicMetadata(string handle, [FromBody] ComicMetadataUpdate metadata)
+        public IActionResult UpdateComicMetadata(string handle, [FromBody] ComicMetadataUpdateRequest metadata)
         {
-            //throw new NotImplementedException();
             if (handle.Length != ComicsContext.HANDLE_LENGTH)
                 return BadRequest(RequestError.InvalidHandle);
-            //using var transaction = _context.Database.BeginTransaction();
             var comic = _context.Comics.SingleOrDefault(c => c.Handle == handle);
             if (comic is Comic actualComic)
             {
@@ -171,9 +194,7 @@ namespace ComiServ.Controllers
                 if (metadata.Authors is List<string> authors)
                 {
                     //make sure all authors exist, without changing Id of pre-existing authors
-                    //TODO try to batch these
-                    authors.ForEach(author => _context.Database.ExecuteSql(
-                        $"INSERT OR IGNORE INTO [Authors] (Name) VALUES ({author})"));
+                    _context.InsertOrIgnore(authors.Select(author => new Author() { Name = author }), ignorePrimaryKey: true);
                     //get the Id of needed authors
                     var authorEntities = _context.Authors.Where(a => authors.Contains(a.Name)).ToList();
                     //delete existing author mappings
@@ -184,9 +205,7 @@ namespace ComiServ.Controllers
                 if (metadata.Tags is List<string> tags)
                 {
                     //make sure all tags exist, without changing Id of pre-existing tags
-                    //TODO try to batch these
-                    tags.ForEach(tag => _context.Database.ExecuteSql(
-                        $"INSERT OR IGNORE INTO [Tags] (Name) VALUES ({tag})"));
+                    _context.InsertOrIgnore(tags.Select(t => new Tag() { Name = t }), ignorePrimaryKey: true);
                     //get the needed tags
                     var tagEntities = _context.Tags.Where(t => tags.Contains(t.Name)).ToList();
                     //delete existing tag mappings
@@ -200,20 +219,95 @@ namespace ComiServ.Controllers
             else
                 return NotFound(RequestError.ComicNotFound);
         }
-        //[HttpDelete("{handle}")]
-        //public IActionResult DeleteComic(string handle)
-        //{
-        //    throw new NotImplementedException();
-        //}
+        [HttpPatch("{handle}/markread")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType<RequestError>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<RequestError>(StatusCodes.Status401Unauthorized)]
+        public IActionResult MarkComicAsRead(
+            ComicsContext context,
+            string handle)
+        {
+            var validated = ComicsContext.CleanValidateHandle(handle);
+            if (validated is null)
+                return BadRequest(RequestError.InvalidHandle);
+            var comic = context.Comics.SingleOrDefault(c => c.Handle == validated);
+            if (comic is null)
+                return NotFound(RequestError.ComicNotFound);
+            if (_auth.User is null)
+                //user shouldn't have passed authentication if username doesn't match
+                return StatusCode(StatusCodes.Status500InternalServerError);
+            var comicRead = new ComicRead()
+            {
+                UserId = _auth.User.Id,
+                ComicId = comic.Id
+            };
+            context.InsertOrIgnore(comicRead, ignorePrimaryKey: false);
+            context.SaveChanges();
+            return Ok();
+        }
+        [HttpPatch("{handle}/markunread")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType<RequestError>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<RequestError>(StatusCodes.Status401Unauthorized)]
+        public IActionResult MarkComicAsUnread(
+            ComicsContext context,
+            string handle)
+        {
+            var validated = ComicsContext.CleanValidateHandle(handle);
+            if (validated is null)
+                return BadRequest(RequestError.InvalidHandle);
+            var comic = context.Comics.SingleOrDefault(c => c.Handle == validated);
+            if (comic is null)
+                return NotFound(RequestError.ComicNotFound);
+            if (_auth.User is null)
+                //user shouldn't have passed authentication if username doesn't match
+                return StatusCode(StatusCodes.Status500InternalServerError);
+            var comicRead = context.ComicsRead.SingleOrDefault(cr =>
+                cr.ComicId == comic.Id && cr.UserId == _auth.User.Id);
+            if (comicRead is null)
+                return Ok();
+            context.ComicsRead.Remove(comicRead);
+            context.SaveChanges();
+            return Ok();
+        }
+        [HttpDelete("{handle}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType<RequestError>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<RequestError>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType<RequestError>(StatusCodes.Status404NotFound)]
+        public IActionResult DeleteComic(
+            string handle,
+            [FromBody]
+            ComicDeleteRequest req)
+        {
+            if (_auth.User is null)
+            {
+                HttpContext.Response.Headers.WWWAuthenticate = "Basic";
+                return Unauthorized(RequestError.NoAccess);
+            }
+            if (_auth.User.UserTypeId != UserTypeEnum.Administrator)
+                return Forbid();
+            var comic = _context.Comics.SingleOrDefault(c => c.Handle == handle);
+            if (comic is null)
+                return NotFound(RequestError.ComicNotFound);
+            comic.Exists = _analyzer.ComicFileExists(string.Join(config.Config.LibraryRoot, comic.Filepath));
+            if (comic.Exists && !req.DeleteIfFileExists)
+                return BadRequest(RequestError.ComicFileExists);
+            _context.Comics.Remove(comic);
+            _context.SaveChanges();
+            _analyzer.DeleteComicFile(string.Join(config.Config.LibraryRoot, comic.Filepath));
+            return Ok();
+        }
         [HttpGet("{handle}/file")]
         [ProducesResponseType<byte[]>(StatusCodes.Status200OK)]
         [ProducesResponseType<RequestError>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<RequestError>(StatusCodes.Status404NotFound)]
         public IActionResult GetComicFile(string handle)
         {
-            _logger.LogInformation($"{nameof(GetComicFile)}: {handle}");
-            handle = handle.Trim().ToUpper();
-            if (handle.Length != ComicsContext.HANDLE_LENGTH)
+            //_logger.LogInformation(nameof(GetComicFile) + ": {handle}", handle);
+            var validated = ComicsContext.CleanValidateHandle(handle);
+            if (validated is null)
                 return BadRequest(RequestError.InvalidHandle);
             var comic = _context.Comics.SingleOrDefault(c => c.Handle == handle);
             if (comic is null)
@@ -227,7 +321,7 @@ namespace ComiServ.Controllers
         [ProducesResponseType<RequestError>(StatusCodes.Status404NotFound)]
         public IActionResult GetComicCover(string handle)
         {
-            _logger.LogInformation($"{nameof(GetComicCover)}: {handle}");
+            //_logger.LogInformation(nameof(GetComicCover) + ": {handle}", handle);
             var validated = ComicsContext.CleanValidateHandle(handle);
             if (validated is null)
                 return BadRequest(RequestError.InvalidHandle);
@@ -248,9 +342,18 @@ namespace ComiServ.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType<RequestError>(StatusCodes.Status400BadRequest)]
         [ProducesResponseType<RequestError>(StatusCodes.Status404NotFound)]
-        public IActionResult GetComicPage(string handle, int page)
+        public IActionResult GetComicPage(string handle, int page,
+            [FromQuery]
+            [DefaultValue(0)]
+            int? maxWidth,
+            [FromQuery]
+            [DefaultValue(0)]
+            int? maxHeight,
+            [FromQuery]
+            [DefaultValue(null)]
+            PictureFormats? format)
         {
-            _logger.LogInformation($"{nameof(GetComicPage)}: {handle} {page}");
+            //_logger.LogInformation(nameof(GetComicPage) + ": {handle} {page}", handle, page);
             var validated = ComicsContext.CleanValidateHandle(handle);
             if (validated is null)
                 return BadRequest(RequestError.InvalidHandle);
@@ -261,24 +364,112 @@ namespace ComiServ.Controllers
             if (comicPage is null)
                 //TODO rethink error code
                 return NotFound(RequestError.PageNotFound);
-            return File(comicPage.Data, comicPage.Mime);
+            var limitWidth = maxWidth ?? -1;
+            var limitHeight = maxHeight ?? -1;
+            if (maxWidth > 0 || maxHeight > 0 || format is not null)
+            {
+                //TODO this copy is not strictly necessary, but avoiding it would mean keeping the comic file
+                //open after GetComicPage returns to keep the stream. Not unreasonable (that's what IDisposable
+                //is for) but need to be careful.
+                using var stream = new MemoryStream(comicPage.Data);
+                System.Drawing.Size limit = new(
+                    limitWidth > 0 ? limitWidth : int.MaxValue,
+                    limitHeight > 0 ? limitHeight : int.MaxValue
+                );
+                string mime = format switch
+                {
+                    PictureFormats f => IPictureConverter.GetMime(f),
+                    null => comicPage.Mime,
+                };
+                //TODO using the stream directly throws but I think it should be valid, need to debug
+                var arr = _converter.ResizeIfBigger(stream, limit, format).ReadAllBytes();
+                return File(arr, mime);
+            }
+            else
+                return File(comicPage.Data, comicPage.Mime);
+        }
+        [HttpGet("{handle}/thumbnail")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType<RequestError>(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType<RequestError>(StatusCodes.Status404NotFound)]
+        public IActionResult GetComicThumbnail(
+            string handle,
+            [FromQuery]
+            [DefaultValue(false)]
+            //if thumbnail doesn't exist, try to find a cover
+            bool fallbackToCover)
+        {
+            RequestError accErrors = new();
+            var validated = ComicsContext.CleanValidateHandle(handle);
+            if (validated is null)
+                return BadRequest(RequestError.InvalidHandle);
+            var comic = _context.Comics.SingleOrDefault(c => c.Handle == validated);
+            if (comic is null)
+                return NotFound(RequestError.ComicNotFound);
+            if (comic.ThumbnailWebp is byte[] img)
+            {
+                return File(img, "application/webp");
+            }
+            if (fallbackToCover)
+            {
+                var cover = _context.Covers.SingleOrDefault(c => c.FileXxhash64 == comic.FileXxhash64);
+                if (cover is not null)
+                {
+                    //TODO should this convert to a thumbnail on the fly?
+                    return File(cover.CoverFile, IComicAnalyzer.GetImageMime(cover.Filename) ?? "application/octet-stream");
+                }
+                accErrors = accErrors.And(RequestError.CoverNotFound);
+            }
+            return NotFound(RequestError.ThumbnailNotFound.And(accErrors));
         }
         [HttpPost("cleandb")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult CleanUnusedTagAuthors()
         {
-            //Since ComicAuthors uses foreign keys 
             _context.Authors
-                .Include("ComicAuthors")
+                .Include(a => a.ComicAuthors)
                 .Where(a => a.ComicAuthors.Count == 0)
                 .ExecuteDelete();
             _context.Tags
-                .Include("ComicTags")
+                .Include(a => a.ComicTags)
                 .Where(a => a.ComicTags.Count == 0)
                 .ExecuteDelete();
             //ExecuteDelete doesn't wait for SaveChanges
             //_context.SaveChanges();
             return Ok();
+        }
+        [HttpGet("duplicates")]
+        [ProducesResponseType<Paginated<ComicDuplicateList>>(StatusCodes.Status200OK)]
+        public IActionResult GetDuplicateFiles(
+            [FromQuery]
+            [DefaultValue(0)]
+            int page,
+            [FromQuery]
+            [DefaultValue(20)]
+            int pageSize)
+        {
+            var groups = _context.Comics
+                .Include("ComicAuthors.Author")
+                .Include("ComicTags.Tag")
+                .GroupBy(c => c.FileXxhash64)
+                .Where(g => g.Count() > 1)
+                .OrderBy(g => g.Key);
+            var ret = new Paginated<ComicDuplicateList>(pageSize, page,
+                groups.Select(g =>
+                    new ComicDuplicateList(g.Key, g.Select(g => g))
+                ));
+            return Ok(ret);
+        }
+        [HttpGet("library")]
+        [ProducesResponseType<LibraryResponse>(StatusCodes.Status200OK)]
+        [ProducesResponseType<RequestError>(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public IActionResult GetLibraryStats()
+        {
+            return Ok(new LibraryResponse(
+                _context.Comics.Count(),
+                _context.Comics.Select(c => c.FileXxhash64).Distinct().Count()
+                ));
         }
     }
 }

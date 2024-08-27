@@ -1,11 +1,12 @@
 ﻿using System.Text.Json;
 
-namespace ComiServ
+namespace ComiServ.Services
 {
     public class Configuration
     {
         public string LibraryRoot { get; set; }
         public string DatabaseFile { get; set; }
+        public double AutoScanPeriodHours { get; set; }
         public Configuration Copy()
             => MemberwiseClone() as Configuration
                 //this really shouldn't be possible
@@ -15,12 +16,12 @@ namespace ComiServ
     {
         public Configuration Config { get; }
     }
-    public class ConfigService : IConfigService
+    public class JsonConfigService : IConfigService
     {
         public Configuration _Config;
         //protect original
         public Configuration Config => _Config.Copy();
-        public ConfigService(string filepath)
+        public JsonConfigService(string filepath)
         {
             using var fileStream = File.OpenRead(filepath);
             _Config = JsonSerializer.Deserialize<Configuration>(fileStream)

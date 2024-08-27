@@ -2,6 +2,11 @@
 using System.Runtime.InteropServices;
 using ComiServ.Controllers;
 using ComiServ.Entities;
+using ComiServ.Extensions;
+using ComiServ.Services;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration.Ini;
 using Microsoft.OpenApi.Writers;
 
 namespace ComiServ.Background
@@ -135,8 +140,12 @@ namespace ComiServ.Background
                 $"Get Cover: {c.Title}",
                 token => InsertCover(Path.Join(_config.LibraryRoot, c.Filepath), c.FileXxhash64)
                 )));
+            newComics.ForEach(c => _manager.StartTask(new(
+                TaskTypes.MakeThumbnail,
+                $"Make Thumbnail: {c.Title}",
+                token => InsertThumbnail(c.Handle, Path.Join(_config.LibraryRoot, c.Filepath), 1)
+                )));
             context.Comics.AddRange(newComics);
-
             context.SaveChanges();
         }
         protected void InsertCover(string filepath, long hash)
@@ -152,13 +161,29 @@ namespace ComiServ.Background
             var page = _analyzer.GetComicPage(filepath, 1);
             if (page is null)
                 return;
-            context.Covers.Add(new()
+            Cover cover = new()
             {
                 FileXxhash64 = hash,
                 Filename = page.Filename,
                 CoverFile = page.Data
-            });
-            context.SaveChanges();
+            };
+            context.InsertOrIgnore(cover, true);
+        }
+        protected void InsertThumbnail(string handle, string filepath, int page = 1)
+        {
+            using var scope = _provider.CreateScope();
+            var services = scope.ServiceProvider;
+            using var context = services.GetRequiredService<ComicsContext>();
+            var comic = context.Comics.SingleOrDefault(c => c.Handle == handle);
+            if (comic?.ThumbnailWebp is null)
+                return;
+            var comicPage = _analyzer.GetComicPage(filepath, page);
+            if (comicPage is null)
+                return;
+            var converter = services.GetRequiredService<IPictureConverter>();
+            using var inStream = new MemoryStream(comicPage.Data);
+            var outStream = converter.MakeThumbnail(inStream);
+            comic.ThumbnailWebp = outStream.ReadAllBytes();
         }
         public void Dispose()
         {

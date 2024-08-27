@@ -19,7 +19,7 @@
             {
                 throw new ArgumentOutOfRangeException(nameof(page), page, "must be greater than or equal to 0");
             }
-            Items = iter.Take(max + 1).ToList();
+            Items = iter.Skip(max * page).Take(max + 1).ToList();
             if (Items.Count > max)
             {
                 Last = false;

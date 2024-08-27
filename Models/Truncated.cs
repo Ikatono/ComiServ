@@ -19,11 +19,10 @@ namespace ComiServ.Models
             if (Items.Count <= max)
             {
                 Complete = true;
-                if (Items.Count > 0)
-                    Items.RemoveAt(max);
             }
             else
             {
+                Items.RemoveAt(max);
                 Complete = false;
             }
             Count = Items.Count;

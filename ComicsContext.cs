@@ -35,6 +35,9 @@ namespace ComiServ
         public DbSet<ComicAuthor> ComicAuthors { get; set; }
         public DbSet<Author> Authors { get; set; }
         public DbSet<Cover> Covers { get; set; }
+        public DbSet<User> Users { get; set; }
+        public DbSet<UserType> UserTypes { get; set; }
+        public DbSet<ComicRead> ComicsRead { get; set; }
         public ComicsContext(DbContextOptions<ComicsContext> options)
             : base(options)
         {
@@ -48,6 +51,17 @@ namespace ComiServ
             modelBuilder.Entity<ComicAuthor>().ToTable("ComicAuthors");
             modelBuilder.Entity<Author>().ToTable("Authors");
             modelBuilder.Entity<Cover>().ToTable("Covers");
+            modelBuilder.Entity<User>().ToTable("Users");
+            modelBuilder.Entity<UserType>().ToTable("UserTypes")
+                .HasData(
+                    Enum.GetValues(typeof(UserTypeEnum))
+                        .Cast<UserTypeEnum>()
+                        .Select(e => new UserType()
+                        {
+                            Id = e,
+                            Name = e.ToString()
+                        })
+                );
         }
         /// <summary>
         /// puts a user-provided handle into the proper form
