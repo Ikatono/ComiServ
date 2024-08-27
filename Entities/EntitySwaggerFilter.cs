@@ -6,7 +6,7 @@ namespace ComiServ.Entities
 {
     /// <summary>
     /// This was originally made to remove Entity types that were being added to the Swagger schema.
-    /// I found that there was a bug a `ProducesResponseTypeAttribute` that caused it, and this is
+    /// I found that there was a bug in `ProducesResponseTypeAttribute` that caused it, and this is
     /// no longer necessary. I changed Apply to a nop but am keeping this around as an example and
     /// in case I actually need something like this in the future.
     /// </summary>
@@ -18,7 +18,9 @@ namespace ComiServ.Entities
             nameof(ComicAuthor),
             nameof(ComicTag),
             nameof(Cover),
-            nameof(Tag)
+            nameof(Tag),
+            nameof(User),
+            nameof(UserType)
         ];
         public void Apply(OpenApiSchema schema, SchemaFilterContext context)
         {

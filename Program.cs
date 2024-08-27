@@ -83,7 +83,6 @@ var app = builder.Build();
 app.UseHttpLogging();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -107,7 +106,7 @@ app.UseHttpsRedirection();
 
 //ensures that the user is authenticated (if auth is provided) but does not restrict access to any routes
 app.UseBasicAuthentication([]);
-//require user or admin account to access any comic resource (uses the authentication 
+//require user or admin account to access any comic resource
 app.UseWhen(context => context.Request.Path.StartsWithSegments(ComicController.ROUTE), appBuilder =>
 {
     appBuilder.UseBasicAuthentication([UserTypeEnum.User, UserTypeEnum.Administrator]);
