@@ -1,7 +1,6 @@
-﻿namespace ComiServ.Models
-{
-    public record class AuthorResponse(string Name, int WorkCount)
-    {
+﻿namespace ComiServ.Models;
 
-    }
+public record class AuthorResponse(string Name, int WorkCount)
+{
+
 }

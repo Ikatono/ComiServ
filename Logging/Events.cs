@@ -1,7 +1,6 @@
-﻿namespace ComiServ.Logging
-{
-    public static class Events
-    {
+﻿namespace ComiServ.Logging;
 
-    }
+public static class Events
+{
+
 }

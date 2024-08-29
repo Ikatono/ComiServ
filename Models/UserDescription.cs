@@ -1,4 +1,6 @@
-﻿namespace ComiServ.Models
+﻿namespace ComiServ.Models;
+
+public record class UserDescription(string Username, string Usertype)
 {
-    public record class UserDescription(string Username, string Usertype);
+
 }

@@ -1,6 +1,5 @@
-﻿namespace ComiServ.Models
+﻿namespace ComiServ.Models;
+
+public record class LibraryResponse(int ComicCount, int UniqueFiles)
 {
-    public record class LibraryResponse(int ComicCount, int UniqueFiles)
-    {
-    }
 }
