@@ -26,7 +26,7 @@ public class TaskController(
     private readonly CancellationTokenSource cancellationToken = new();
     [HttpGet]
     [ProducesResponseType<Truncated<string>>(StatusCodes.Status200OK)]
-    public Task<IActionResult> GetTasks(
+    public IActionResult GetTasks(
         [FromQuery]
         [DefaultValue(20)]
         int limit

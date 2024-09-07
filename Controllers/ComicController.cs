@@ -33,9 +33,9 @@ public class ComicController(ComicsContext context, ILogger<ComicController> log
     [HttpGet]
     [ProducesResponseType<Paginated<ComicData>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> SearchComics(
-        [FromQuery(Name = "TitleSearch")]
+        [FromQuery(Name = "title")]
         string? titleSearch,
-        [FromQuery(Name = "DescriptionSearch")]
+        [FromQuery(Name = "description")]
         string? descSearch,
         [FromQuery]
         string[] authors,
@@ -43,7 +43,7 @@ public class ComicController(ComicsContext context, ILogger<ComicController> log
         string[] tags,
         [FromQuery]
         string? pages,
-        [FromQuery]
+        [FromQuery(Name = "hash")]
         string? xxhash64Hex,
         [FromQuery]
         bool? exists,
