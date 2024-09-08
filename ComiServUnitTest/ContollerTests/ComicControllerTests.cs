@@ -62,7 +62,7 @@ public class ComicControllerTests
 		MockComicAnalyzer analyzer = new();
 		analyzer.ComicPages.Add((Path.Join(config.LibraryRoot, comic.Filepath), PAGE_NUMBER), comicPage);
 		//returned from all MockPictureConverter functions
-		byte[] mockPictureData = [1, 2, 3, 4, 5];
+		byte[] mockPictureData = [5, 4, 3, 2, 1];
 		MockPictureConverter converter = new MockPictureConverter(mockPictureData);
 		AuthenticationService auth = new();
 		auth.Authenticate(user);
