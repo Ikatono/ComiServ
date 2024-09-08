@@ -10,24 +10,37 @@ namespace ComiServUnitTest.Mocks
 {
 	internal class MockPictureConverter : IPictureConverter
 	{
-		public MockPictureConverter()
+		public int MakeThumbnailCount = 0;
+		public int ResizeCount = 0;
+		public int ResizeIfBiggerCount = 0;
+		private byte[] StreamObject { get; }
+		public MockPictureConverter(byte[] streamObject)
 		{
-
+			StreamObject = streamObject;
 		}
 
-		public Task<Stream> MakeThumbnail(Stream image)
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
+		public async Task<Stream> MakeThumbnail(Stream image)
+#pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
 		{
-			throw new NotImplementedException();
+			MakeThumbnailCount++;
+			return new MemoryStream(StreamObject);
 		}
 
-		public Task<Stream> Resize(Stream image, Size newSize, PictureFormats? newFormat = null)
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
+		public async Task<Stream> Resize(Stream image, Size newSize, PictureFormats? newFormat = null)
+#pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
 		{
-			throw new NotImplementedException();
+			ResizeCount++;
+			return new MemoryStream(StreamObject);
 		}
 
-		public Task<Stream> ResizeIfBigger(Stream image, Size maxSize, PictureFormats? newFormat = null)
+#pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
+		public async Task<Stream> ResizeIfBigger(Stream image, Size maxSize, PictureFormats? newFormat = null)
+#pragma warning restore CS1998 // Async method lacks 'await' operators and will run synchronously
 		{
-			throw new NotImplementedException();
+			ResizeIfBiggerCount++;
+			return new MemoryStream(StreamObject);
 		}
 	}
 }

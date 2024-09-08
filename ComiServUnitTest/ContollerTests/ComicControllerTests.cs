@@ -61,7 +61,9 @@ public class ComicControllerTests
 		ComicPage comicPage = new(PAGE_FILEPATH, PAGE_MIME, [1, 2, 3, 4, 5]);
 		MockComicAnalyzer analyzer = new();
 		analyzer.ComicPages.Add((Path.Join(config.LibraryRoot, comic.Filepath), PAGE_NUMBER), comicPage);
-		IPictureConverter converter = new MockPictureConverter();
+		//returned from all MockPictureConverter functions
+		byte[] mockPictureData = [1, 2, 3, 4, 5];
+		MockPictureConverter converter = new MockPictureConverter(mockPictureData);
 		AuthenticationService auth = new();
 		auth.Authenticate(user);
 		var controller = new ComicController(
@@ -78,10 +80,17 @@ public class ComicControllerTests
 		var contents = ((FileContentResult)result).FileContents;
 		Assert.IsTrue(comicPage.Data.SequenceEqual(contents));
 		//invalid handle (too short)
-		var result2 = await controller.GetComicFile(string.Join("", Enumerable.Repeat("A", ComicsContext.HANDLE_LENGTH - 1)));
+		var result2 = await controller.GetComicPage(comic.Handle.Substring(comic.Handle.Length-1),
+			PAGE_NUMBER, null, null, null);
 		Assert.IsInstanceOfType<BadRequestObjectResult>(result2);
 		//valid handle but doesn't exist
-		var result3 = await controller.GetComicFile(string.Join("", Enumerable.Repeat("B", ComicsContext.HANDLE_LENGTH)));
+		var result3 = await controller.GetComicPage(string.Join("", Enumerable.Repeat("B", ComicsContext.HANDLE_LENGTH)),
+			PAGE_NUMBER, null, null, null);
 		Assert.IsInstanceOfType<NotFoundObjectResult>(result3);
+		//valid handle and convert
+		var result4 = await controller.GetComicPage(comic.Handle, PAGE_NUMBER, 500, 500, PictureFormats.Webp);
+		Assert.AreEqual(1, converter.ResizeIfBiggerCount);
+		Assert.IsInstanceOfType<FileContentResult>(result4);
+		Assert.IsTrue(mockPictureData.SequenceEqual(((FileContentResult)result4).FileContents));
 	}
 }

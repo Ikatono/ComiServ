@@ -471,8 +471,8 @@ public class ComicController(ComicsContext context, ILogger<ComicController> log
     public async Task<IActionResult> GetLibraryStats()
     {
         return Ok(new LibraryResponse(
-            await _context.Comics.CountAsync(),
-            await _context.Comics.Select(c => c.FileXxhash64).Distinct().CountAsync()
+            ComicCount: await _context.Comics.CountAsync(),
+            UniqueFiles: await _context.Comics.Select(c => c.FileXxhash64).Distinct().CountAsync()
             ));
     }
 }
