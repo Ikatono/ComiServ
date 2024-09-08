@@ -313,6 +313,8 @@ public class ComicController(ComicsContext context, ILogger<ComicController> log
         var comic = await _context.Comics.SingleOrDefaultAsync(c => c.Handle == handle);
         if (comic is null)
             return NotFound(RequestError.ComicNotFound);
+        //can't mock this easily, move to a service?
+        //maybe IComicAnalyzer should be used even just to read a file
         var data = await System.IO.File.ReadAllBytesAsync(Path.Join(_config.LibraryRoot, comic.Filepath));
         return File(data, "application/octet-stream", new FileInfo(comic.Filepath).Name);
     }
