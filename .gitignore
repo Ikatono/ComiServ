@@ -1,4 +1,4 @@
-
+*.sln
 
 #SQLite files
 *.db
